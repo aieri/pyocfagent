@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import syslog
+import sys
 
 # Defined exit codes. See:
 # http://www.opencf.org/cgi-bin/viewcvs.cgi/specs/ra/resource-agent-api.txt?rev=HEAD
@@ -20,7 +22,36 @@ class ResourceAgentException(SystemExit):
     def __init__(self, error_code, message):
         self.error_code = error_code
         self.message = message
-        print "ResourceAgentException:", message, "- exit code", error_code
+        if sys.stdout.isatty():  # Running interactively
+            print "ResourceAgentException:", message, "- exit code", error_code
+        else:  # Log to syslog
+            # soft/hard/fatal error types mapping from
+            # https://clusterlabs.org/pacemaker/doc/en-US/Pacemaker/1.1/html-single/Pacemaker_Explained/#s-ocf-return-codes
+
+            # Usually not an error
+            if error_code in [OCF_SUCCESS,
+                              OCF_NOT_RUNNING,
+                              OCF_RUNNING_MASTER]:
+                priority = syslog.LOG_DEBUG
+                syslog.openlog(logoption=syslog.LOG_PID)
+                message = "DEBUG: " + message
+            # Fatal errors
+            elif error_code in [OCF_ERR_CONFIGURED]:
+                priority = syslog.LOG_ALERT
+                message = "ALERT: " + message
+            # Hard errors
+            elif error_code in [OCF_ERR_ARGS,
+                                OCF_ERR_UNIMPLEMENTED,
+                                OCF_ERR_PERM,
+                                OCF_ERR_INSTALLED]:
+                priority = syslog.LOG_CRIT
+                message = "CRIT: " + message
+            # Soft errors
+            else:
+                priority = syslog.LOG_ERR
+                message = "ERROR: " + message
+            syslog.syslog(priority, message)
+
         SystemExit.__init__(self, error_code)
 
     def __str__(self):
